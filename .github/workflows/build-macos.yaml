@@ -1,7 +1,7 @@
 name: Build Aseprite for macOS
 
 on:
-  workflow_dispatch:  # Allows you to manually trigger the build
+  workflow_dispatch:
   push:
     branches: [ main, master ]
     paths-ignore:
@@ -10,19 +10,19 @@ on:
 jobs:
   build:
     name: Build for ${{ matrix.architecture }}
-    runs-on: ${{ matrix.os }}
+    # We now use macos-latest (Apple Silicon) for BOTH builds.
+    # We will cross-compile the x64 version on the ARM machine.
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
         include:
           - architecture: x64
-            os: macos-13  # Intel Mac runner
-            skia_arch: x64
             cmake_arch: x86_64
+            skia_arch: x64
           - architecture: arm64
-            os: macos-latest # Apple Silicon (M1) runner
-            skia_arch: arm64
             cmake_arch: arm64
+            skia_arch: arm64
 
     steps:
     - name: Checkout Aseprite
@@ -30,28 +30,19 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Install Dependencies (Ninja & CMake)
-      run: |
-        brew install ninja cmake
-    
     - name: Download Skia (m124)
       run: |
-        # Creates the deps folder as requested in the docs
         mkdir -p $HOME/deps
         cd $HOME/deps
         
-        # Downloads the latest release from the aseprite-m124 branch
-        # This automatically finds the correct zip for the architecture (x64 or arm64)
         REPO="aseprite/skia"
-        TAG="m124-b384ac9237" # Pinned to a known working m124 tag to ensure stability
+        TAG="m124-b384ac9237"
         ASSET_NAME="Skia-macOS-Release-${{ matrix.skia_arch }}.zip"
         
         echo "Downloading $ASSET_NAME..."
         curl -L -O "https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME"
         
-        # Unzip into the 'skia' folder
         unzip $ASSET_NAME -d skia
-        
         echo "Skia setup complete."
 
     - name: Configure CMake
@@ -59,7 +50,6 @@ jobs:
         mkdir build
         cd build
         
-        # dynamically find the SDK path to avoid hardcoding errors on GitHub runners
         SDK_PATH=$(xcrun --show-sdk-path)
         
         cmake \
@@ -77,15 +67,13 @@ jobs:
     - name: Build Aseprite
       run: |
         cd build
-        ninja aseprite
+        # The -j1 flag is CRITICAL. It limits the build to 1 job at a time.
+        # This prevents the runner from running out of RAM (Exit Code 9).
+        ninja -j1 aseprite
 
     - name: Package App Bundle
       run: |
-        # The build creates a binary, but macOS needs a structure.
-        # We assume the build process generated the binary at build/bin/aseprite
         cd build/bin
-        
-        # Create a simple zip of the output to make it easy to download
         zip -r aseprite-macos-${{ matrix.architecture }}.zip aseprite data
 
     - name: Upload Artifact
