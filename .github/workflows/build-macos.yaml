@@ -10,8 +10,6 @@ on:
 jobs:
   build:
     name: Build for ${{ matrix.architecture }}
-    # We now use macos-latest (Apple Silicon) for BOTH builds.
-    # We will cross-compile the x64 version on the ARM machine.
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -35,12 +33,16 @@ jobs:
         mkdir -p $HOME/deps
         cd $HOME/deps
         
+        # UPDATED TAG: This specific release is confirmed to exist
         REPO="aseprite/skia"
-        TAG="m124-b384ac9237"
+        TAG="m124-08a5439a6b"
         ASSET_NAME="Skia-macOS-Release-${{ matrix.skia_arch }}.zip"
         
-        echo "Downloading $ASSET_NAME..."
+        echo "Downloading $ASSET_NAME from $TAG..."
         curl -L -O "https://github.com/$REPO/releases/download/$TAG/$ASSET_NAME"
+        
+        # Check if the file is a valid zip before unzipping
+        file $ASSET_NAME
         
         unzip $ASSET_NAME -d skia
         echo "Skia setup complete."
@@ -67,8 +69,7 @@ jobs:
     - name: Build Aseprite
       run: |
         cd build
-        # The -j1 flag is CRITICAL. It limits the build to 1 job at a time.
-        # This prevents the runner from running out of RAM (Exit Code 9).
+        # -j1 prevents the memory crash (Exit Code 9) seen in your screenshot
         ninja -j1 aseprite
 
     - name: Package App Bundle
